@@ -67,7 +67,10 @@ flowchart LR
 2. **Classify** — a **DenseNet-121** trained on the
    [Stanford MURA dataset](https://stanfordmlgroup.github.io/competitions/mura/)
    (~40k upper-extremity radiographs: elbow, finger, forearm, hand, humerus, shoulder,
-   wrist) outputs `P(normal)` and `P(abnormal)`.
+   wrist) outputs `P(normal)` and `P(abnormal)`. The prediction is averaged over a few
+   label-preserving **test-time views** (flip, small rotations, mild zoom) — the
+   *“Test Time Multi-View”* stage from the original project — which steadies the answer
+   when a study is captured at a slightly different angle.
 3. **Explain** — [SmoothGrad](https://arxiv.org/abs/1706.03825) averages the input gradient
    of the abnormal-class logit across dozens of noise-perturbed copies of the image; the map
    is thresholded at its 99th percentile, blurred, and overlaid on the X-ray.
@@ -168,7 +171,8 @@ app/
 model/
 └── densenet121_mura.onnx    DenseNet-121, original 2021 weights
 scripts/
-└── convert_model.py   One-time TF1 frozen graph → ONNX conversion
+├── convert_model.py   One-time TF1 frozen graph → ONNX conversion
+└── benchmark_tta.py   Measures prediction stability (TTA vs single-view)
 docs/web/demo.js       In-browser demo (onnxruntime-web)
 index.html             GitHub Pages entry point
 tests/                 pytest suite

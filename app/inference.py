@@ -34,6 +34,13 @@ SMOOTHGRAD_BATCH = int(os.environ.get("XRV_SMOOTHGRAD_BATCH", "16"))
 DISPLAY_SIZE = 600
 ABNORMAL_CLASS = 1
 
+# Test-time augmentation. Averaging the model's prediction over a few
+# label-preserving views (horizontal flip, small rotations, mild zoom) — the
+# "Test Time Multi-View" stage from the original project design. The model was
+# trained with exactly these augmentations (flip, rotate up to 30 deg, zoom),
+# so every view stays inside its training distribution.
+TTA_ENABLED = os.environ.get("XRV_TTA", "1") != "0"
+
 # Compact viridis colormap (anchor points, linearly interpolated) so we can
 # reproduce the original matplotlib overlay without a matplotlib dependency.
 _VIRIDIS_ANCHORS = np.array([
@@ -87,6 +94,21 @@ class XRayModel:
         _, prob = self._forward(images)
         return prob.numpy()
 
+    @torch.no_grad()
+    def predict_tta(self, batch: np.ndarray) -> np.ndarray:
+        """Multi-view test-time-augmented probability for a single image.
+
+        Runs the model over several label-preserving views and averages the
+        softmax outputs. The average of probability vectors is itself a valid
+        distribution, so the result still sums to 1. Falls back to a plain
+        single-view prediction when TTA is disabled.
+        """
+        if not TTA_ENABLED:
+            return self.predict(batch)[0]
+        views = _tta_views(batch[0])
+        probs = self.predict(views)  # [n_views, 2]
+        return probs.mean(axis=0)
+
     def smoothgrad(self, batch: np.ndarray) -> np.ndarray:
         """SmoothGrad sensitivity map for the abnormal class.
 
@@ -119,7 +141,7 @@ class XRayModel:
         batch = prepare_input(image)
 
         with self._lock:
-            prob = self.predict(batch)[0]
+            prob = self.predict_tta(batch)
             mask = self.smoothgrad(batch)
 
         display = np.clip(batch[0] * 255.0, 0, 255).astype(np.uint8)
@@ -141,6 +163,30 @@ class XRayModel:
             input_png=_to_png(input_img),
             heatmap_png=_to_png(heatmap),
         )
+
+
+def _tta_views(img: np.ndarray) -> np.ndarray:
+    """Label-preserving views of an HWC [0,1] image, stacked as an NHWC batch.
+
+    View 0 is always the original image, so callers can recover the canonical
+    prediction from ``views[0]`` if needed.
+    """
+    views = [img, np.ascontiguousarray(img[:, ::-1, :])]  # original + h-flip
+
+    pil = Image.fromarray((np.clip(img, 0, 1) * 255).astype(np.uint8))
+    for angle in (-8, 8):  # mild rotations, well within the +/-30 deg used in training
+        rot = pil.rotate(angle, resample=Image.BILINEAR, fillcolor=(0, 0, 0))
+        views.append(np.asarray(rot).astype(np.float32) / 255.0)
+
+    # Mild center zoom (~1.11x): crop the central 90% and resize back.
+    h, w = img.shape[:2]
+    ch, cw = int(h * 0.9), int(w * 0.9)
+    top, left = (h - ch) // 2, (w - cw) // 2
+    crop = Image.fromarray((np.clip(img[top:top + ch, left:left + cw], 0, 1) * 255).astype(np.uint8))
+    zoom = crop.resize((w, h), Image.BILINEAR)
+    views.append(np.asarray(zoom).astype(np.float32) / 255.0)
+
+    return np.stack(views).astype(np.float32)
 
 
 def _box_blur(mask: np.ndarray, kernel: int = 5) -> np.ndarray:

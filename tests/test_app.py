@@ -48,6 +48,35 @@ def test_example_image_is_abnormal(model):
     assert prob[1] > 0.9
 
 
+def test_tta_returns_valid_distribution(model):
+    batch = prepare_input(Image.open(EXAMPLE))
+    prob = model.predict_tta(batch)
+    assert prob.shape == (2,)
+    assert abs(prob.sum() - 1.0) < 1e-4
+    assert prob[1] > 0.9  # example stays abnormal under multi-view averaging
+
+
+def test_tta_views_are_all_valid_images(model):
+    """Every generated view is a well-formed [0,1] 224x224x3 image."""
+    from app.inference import _tta_views
+
+    base = prepare_input(Image.open(EXAMPLE))[0]
+    views = _tta_views(base)
+    assert views.shape[1:] == (224, 224, 3)
+    assert views.shape[0] >= 4  # original + flip + rotations + zoom
+    assert 0.0 <= views.min() and views.max() <= 1.0
+    # View 0 must be the untouched original (callers rely on this).
+    assert np.array_equal(views[0], base)
+
+
+def test_tta_agrees_with_single_view(model):
+    """TTA refines, it should not contradict, the single-view prediction."""
+    batch = prepare_input(Image.open(EXAMPLE))
+    single = model.predict(batch)[0][1]
+    tta = model.predict_tta(batch)[1]
+    assert abs(single - tta) < 0.1  # same ballpark, same verdict
+
+
 def test_smoothgrad_produces_localized_map(model):
     batch = prepare_input(Image.open(EXAMPLE))
     mask = model.smoothgrad(batch)

@@ -125,6 +125,64 @@ async function predict(batchData, n) {
   return { abn, logit };
 }
 
+/* ---------- test-time augmentation (multi-view) ----------
+ *
+ * Averages the abnormal probability over a few label-preserving views
+ * (h-flip, small rotations, mild zoom) — the "Test Time Multi-View" stage
+ * from the original project. View 0 stays the original, so its logit still
+ * anchors the occlusion map.
+ */
+
+function transformView(base, { flip = false, rotate = 0, zoom = 1 }) {
+  const src = document.createElement("canvas");
+  src.width = src.height = SIZE;
+  const sg = src.getContext("2d");
+  const img = sg.createImageData(SIZE, SIZE);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    img.data[i * 4] = base[i * 3] * 255;
+    img.data[i * 4 + 1] = base[i * 3 + 1] * 255;
+    img.data[i * 4 + 2] = base[i * 3 + 2] * 255;
+    img.data[i * 4 + 3] = 255;
+  }
+  sg.putImageData(img, 0, 0);
+
+  const dst = document.createElement("canvas");
+  dst.width = dst.height = SIZE;
+  const g = dst.getContext("2d");
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, SIZE, SIZE);
+  g.translate(SIZE / 2, SIZE / 2);
+  if (flip) g.scale(-1, 1);
+  if (zoom !== 1) g.scale(zoom, zoom);
+  if (rotate) g.rotate((rotate * Math.PI) / 180);
+  g.drawImage(src, -SIZE / 2, -SIZE / 2);
+
+  const px = g.getImageData(0, 0, SIZE, SIZE).data;
+  const out = new Float32Array(SIZE * SIZE * 3);
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    out[i * 3] = px[i * 4] / 255;
+    out[i * 3 + 1] = px[i * 4 + 1] / 255;
+    out[i * 3 + 2] = px[i * 4 + 2] / 255;
+  }
+  return out;
+}
+
+async function predictTTA(base) {
+  const views = [
+    base,
+    transformView(base, { flip: true }),
+    transformView(base, { rotate: -8 }),
+    transformView(base, { rotate: 8 }),
+    transformView(base, { zoom: 1.11 }),
+  ];
+  const n = views.length;
+  const batch = new Float32Array(n * SIZE * SIZE * 3);
+  views.forEach((v, i) => batch.set(v, i * SIZE * SIZE * 3));
+  const { abn, logit } = await predict(batch, n);
+  const pAbn = abn.reduce((a, b) => a + b, 0) / n;
+  return { pAbn, logit0: logit[0] }; // view 0 = original, for the occlusion map
+}
+
 /* ---------- occlusion sensitivity map ----------
  *
  * Importance of a patch = how much the *abnormal-class logit* drops when
@@ -272,11 +330,10 @@ async function analyze(source) {
     const img = await loadImage(source);
     const base = preprocess(img);
 
-    $("progress-text").textContent = "Classifying…";
-    const { abn, logit } = await predict(base, 1);
-    const p0 = abn[0];
+    $("progress-text").textContent = "Classifying (multi-view)…";
+    const { pAbn: p0, logit0 } = await predictTTA(base);
 
-    const heat = await occlusionMap(base, logit[0], (done, total) => {
+    const heat = await occlusionMap(base, logit0, (done, total) => {
       $("progress-text").textContent = `Computing sensitivity map… ${done}/${total}`;
     });
 
