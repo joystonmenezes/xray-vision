@@ -12,12 +12,18 @@
 const MODEL_URL = "model/densenet121_mura.onnx";
 const INPUT_NAME = "inputs:0";
 const PROB_NAME = "densenet121/probability:0";
+const LOGITS_NAME = "densenet121/densenet121/TargetSpatialSqueeze:0";
 const SIZE = 224;
 const RESIZE = 256;
-const GRID = 8;          // occlusion grid (GRID x GRID probes)
-const PATCH = 48;        // occlusion patch size in pixels
 const BATCH = 8;
 const MAX_BYTES = 16 * 1024 * 1024;
+
+// Occlusion resolution: finer on WebGPU (fast), coarser on WASM (slow).
+const OCCLUSION = {
+  webgpu: { patch: 32, stride: 16 }, // 13x13 = 169 probes
+  wasm: { patch: 48, stride: 22 },   //  9x9  =  81 probes
+};
+let provider = "wasm";
 
 // Same viridis anchors as the server app.
 const VIRIDIS = [
@@ -64,7 +70,8 @@ async function loadModel() {
     for (const providers of [["webgpu"], ["wasm"]]) {
       try {
         session = await ort.InferenceSession.create(buf, { executionProviders: providers });
-        console.log("onnxruntime-web using:", providers[0]);
+        provider = providers[0];
+        console.log("onnxruntime-web using:", provider);
         break;
       } catch (e) {
         console.warn(`${providers[0]} init failed:`, e);
@@ -108,44 +115,120 @@ function preprocess(img) {
 async function predict(batchData, n) {
   const tensor = new ort.Tensor("float32", batchData, [n, SIZE, SIZE, 3]);
   const out = await session.run({ [INPUT_NAME]: tensor });
-  const prob = out[PROB_NAME].data; // [n * 2], [normal, abnormal] per row
-  const abn = new Array(n);
-  for (let i = 0; i < n; i++) abn[i] = prob[i * 2 + 1];
-  return abn;
+  const prob = out[PROB_NAME].data;     // [n * 2], [normal, abnormal] per row
+  const logits = out[LOGITS_NAME].data; // [n * 2]
+  const abn = new Array(n), logit = new Array(n);
+  for (let i = 0; i < n; i++) {
+    abn[i] = prob[i * 2 + 1];
+    logit[i] = logits[i * 2 + 1];
+  }
+  return { abn, logit };
 }
 
-/* ---------- occlusion sensitivity map ---------- */
+/* ---------- occlusion sensitivity map ----------
+ *
+ * Importance of a patch = how much the *abnormal-class logit* drops when
+ * that patch is grayed out. Logits are used instead of probabilities
+ * because softmax saturates near 100% confidence and flattens the signal.
+ * Overlapping patches are accumulated per pixel, then the map is floored
+ * at a high percentile (like the original SmoothGrad post-processing,
+ * which kept only top-percentile activity) so only the peak region shows.
+ */
 
-async function occlusionMap(base, p0, onProgress) {
+async function occlusionMap(base, logit0, onProgress) {
+  const { patch, stride } = OCCLUSION[provider] || OCCLUSION.wasm;
+
+  // Fill occluded patches with the image's own mean color: a fixed gray on
+  // an X-ray's black background is itself an anomaly and pollutes the map.
+  const mean = [0, 0, 0];
+  for (let i = 0; i < SIZE * SIZE; i++)
+    for (let c = 0; c < 3; c++) mean[c] += base[i * 3 + c];
+  for (let c = 0; c < 3; c++) mean[c] /= SIZE * SIZE;
+
+  // Skip near-uniform patches (plain background) — occluding nothing tells
+  // us nothing, and it makes the map noisy at the image borders.
   const positions = [];
-  for (let gy = 0; gy < GRID; gy++)
-    for (let gx = 0; gx < GRID; gx++)
-      positions.push([
-        Math.round((gx * (SIZE - PATCH)) / (GRID - 1)),
-        Math.round((gy * (SIZE - PATCH)) / (GRID - 1)),
-      ]);
+  for (let py = 0; py + patch <= SIZE; py += stride)
+    for (let px = 0; px + patch <= SIZE; px += stride) {
+      let sum = 0, sq = 0;
+      const n = patch * patch;
+      for (let y = py; y < py + patch; y++)
+        for (let x = px; x < px + patch; x++) {
+          const v = base[(y * SIZE + x) * 3];
+          sum += v; sq += v * v;
+        }
+      const std = Math.sqrt(Math.max(0, sq / n - (sum / n) ** 2));
+      if (std > 0.02) positions.push([px, py]);
+    }
 
-  const importance = new Float32Array(GRID * GRID);
+  const heat = new Float32Array(SIZE * SIZE);
+  const cover = new Float32Array(SIZE * SIZE);
+
   for (let start = 0; start < positions.length; start += BATCH) {
     const slice = positions.slice(start, start + BATCH);
     const batch = new Float32Array(slice.length * SIZE * SIZE * 3);
     slice.forEach(([px, py], b) => {
       batch.set(base, b * SIZE * SIZE * 3);
-      for (let y = py; y < py + PATCH; y++)
-        for (let x = px; x < px + PATCH; x++) {
+      for (let y = py; y < py + patch; y++)
+        for (let x = px; x < px + patch; x++) {
           const o = b * SIZE * SIZE * 3 + (y * SIZE + x) * 3;
-          batch[o] = batch[o + 1] = batch[o + 2] = 0.5;
+          batch[o] = mean[0];
+          batch[o + 1] = mean[1];
+          batch[o + 2] = mean[2];
         }
     });
-    const abn = await predict(batch, slice.length);
-    abn.forEach((p, b) => { importance[start + b] = Math.max(0, p0 - p); });
+    const { logit } = await predict(batch, slice.length);
+    slice.forEach(([px, py], b) => {
+      const imp = Math.max(0, logit0 - logit[b]);
+      for (let y = py; y < py + patch; y++)
+        for (let x = px; x < px + patch; x++) {
+          heat[y * SIZE + x] += imp;
+          cover[y * SIZE + x] += 1;
+        }
+    });
     onProgress(Math.min(start + BATCH, positions.length), positions.length);
     await new Promise((r) => setTimeout(r)); // let the UI breathe
   }
 
-  const max = Math.max(...importance);
-  if (max > 0) for (let i = 0; i < importance.length; i++) importance[i] /= max;
-  return importance;
+  for (let i = 0; i < heat.length; i++) heat[i] /= Math.max(cover[i], 1);
+
+  // Floor at the 80th percentile, normalize, sharpen.
+  const sorted = Float32Array.from(heat).sort();
+  const floor = sorted[Math.floor(sorted.length * 0.8)];
+  let max = 0;
+  for (let i = 0; i < heat.length; i++) {
+    heat[i] = Math.max(0, heat[i] - floor);
+    if (heat[i] > max) max = heat[i];
+  }
+  if (max > 0)
+    for (let i = 0; i < heat.length; i++)
+      heat[i] = Math.pow(heat[i] / max, 1.5);
+
+  return boxBlur(heat, SIZE, 4);
+}
+
+function boxBlur(src, size, radius) {
+  const tmp = new Float32Array(src.length), out = new Float32Array(src.length);
+  const norm = 2 * radius + 1;
+  for (let y = 0; y < size; y++) {        // horizontal pass
+    let acc = 0;
+    for (let x = -radius; x <= radius; x++) acc += src[y * size + Math.min(Math.max(x, 0), size - 1)];
+    for (let x = 0; x < size; x++) {
+      tmp[y * size + x] = acc / norm;
+      acc += src[y * size + Math.min(x + radius + 1, size - 1)];
+      acc -= src[y * size + Math.max(x - radius, 0)];
+    }
+  }
+  for (let x = 0; x < size; x++) {        // vertical pass
+    let acc = 0;
+    for (let y = -radius; y <= radius; y++) acc += tmp[Math.min(Math.max(y, 0), size - 1) * size + x];
+    for (let y = 0; y < size; y++) {
+      out[y * size + x] = acc / norm;
+      acc += tmp[Math.min(y + radius + 1, size - 1) * size + x];
+      acc -= tmp[Math.max(y - radius, 0) * size + x];
+    }
+  }
+  return out;
 }
 
 /* ---------- rendering ---------- */
@@ -162,31 +245,12 @@ function drawInput(base) {
   ctx.putImageData(img, 0, 0);
 }
 
-function drawHeatmap(base, importance) {
-  // Upscale the GRID x GRID importance map smoothly to SIZE x SIZE.
-  const small = document.createElement("canvas");
-  small.width = small.height = GRID;
-  const sg = small.getContext("2d");
-  const simg = sg.createImageData(GRID, GRID);
-  for (let i = 0; i < GRID * GRID; i++) {
-    simg.data[i * 4] = importance[i] * 255;
-    simg.data[i * 4 + 3] = 255;
-  }
-  sg.putImageData(simg, 0, 0);
-
-  const up = document.createElement("canvas");
-  up.width = up.height = SIZE;
-  const ug = up.getContext("2d");
-  ug.imageSmoothingEnabled = true;
-  ug.imageSmoothingQuality = "high";
-  ug.drawImage(small, 0, 0, SIZE, SIZE);
-  const heat = ug.getImageData(0, 0, SIZE, SIZE).data;
-
+function drawHeatmap(base, heat) {
   // Blend viridis(heat) over the input at 35% alpha, like the server app.
   const ctx = $("canvas-heatmap").getContext("2d");
   const out = ctx.createImageData(SIZE, SIZE);
   for (let i = 0; i < SIZE * SIZE; i++) {
-    const [r, g, b] = viridis(heat[i * 4] / 255);
+    const [r, g, b] = viridis(heat[i]);
     out.data[i * 4] = base[i * 3] * 255 * 0.65 + r * 0.35;
     out.data[i * 4 + 1] = base[i * 3 + 1] * 255 * 0.65 + g * 0.35;
     out.data[i * 4 + 2] = base[i * 3 + 2] * 255 * 0.65 + b * 0.35;
@@ -209,14 +273,15 @@ async function analyze(source) {
     const base = preprocess(img);
 
     $("progress-text").textContent = "Classifying…";
-    const [p0] = await predict(base, 1);
+    const { abn, logit } = await predict(base, 1);
+    const p0 = abn[0];
 
-    const importance = await occlusionMap(base, p0, (done, total) => {
+    const heat = await occlusionMap(base, logit[0], (done, total) => {
       $("progress-text").textContent = `Computing sensitivity map… ${done}/${total}`;
     });
 
     drawInput(base);
-    drawHeatmap(base, importance);
+    drawHeatmap(base, heat);
 
     const pct = Math.round(p0 * 1000) / 10;
     const verdict = $("verdict");
