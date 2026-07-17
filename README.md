@@ -5,6 +5,11 @@
 Upload a bone X-ray → get the **probability that it contains an abnormality**, plus a
 **SmoothGrad sensitivity map** highlighting the region that drove the prediction.
 
+**▶ [Try it live](https://joystonmenezes.github.io/xray-vision/)** — an in-browser
+version that runs the same model entirely on your device via onnxruntime-web
+(WebGPU/WASM). No server, and your X-ray never leaves your browser. (The live demo
+uses an occlusion-based heatmap; the full app below computes true SmoothGrad.)
+
 ![App screenshot](docs/screenshot-results.png)
 
 > ⚠️ **Disclaimer:** research & demonstration only. This is not a medical device and must
