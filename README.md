@@ -60,7 +60,7 @@ cd xray-vision
 python -m venv .venv
 # Windows: .venv\Scripts\activate     macOS/Linux: source .venv/bin/activate
 
-pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only torch
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # CPU-only torch
 pip install -r requirements.txt
 
 uvicorn app.main:app --port 8000
