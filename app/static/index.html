@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Detection and visualization of bone abnormalities in X-ray images using convolutional neural networks." />
+  <title>X-Ray Vision — Bone Abnormality Detection</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦴</text></svg>" />
+</head>
+<body>
+  <nav class="nav">
+    <span class="nav__brand">🦴 X-Ray Vision</span>
+    <div class="nav__links">
+      <a href="#analyze">Analyze</a>
+      <a href="#how">How it works</a>
+      <a href="https://stanfordmlgroup.github.io/competitions/mura/" target="_blank" rel="noopener">MURA dataset</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <h1>X-Ray Vision</h1>
+    <p class="hero__tag">Detection &amp; visualization of bone abnormalities in X-ray images<br />using convolutional neural networks</p>
+    <a class="btn btn--primary" href="#analyze">Analyze an X-ray</a>
+  </header>
+
+  <main>
+    <section id="analyze" class="panel">
+      <h2>Upload a bone X-ray</h2>
+      <p class="muted">
+        A DenseNet-121 trained on the Stanford MURA dataset estimates the probability
+        that the study contains an abnormality, and a SmoothGrad sensitivity map
+        highlights the region driving that prediction.
+      </p>
+
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload an X-ray image">
+        <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path d="M12 16V4m0 0 4 4m-4-4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round"/>
+        </svg>
+        <p><strong>Drop an X-ray here</strong> or click to browse</p>
+        <p class="muted small">PNG or JPEG · up to 16 MB</p>
+        <input id="file-input" type="file" accept="image/png,image/jpeg" hidden />
+      </div>
+      <p class="muted small" style="margin-top: 0.8rem;">
+        No X-ray handy? <a id="try-sample" href="#analyze">Try the sample study</a>.
+      </p>
+
+      <div id="progress" class="progress" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="progress-text">Analyzing X-ray…</p>
+      </div>
+
+      <div id="error" class="error" role="alert" hidden></div>
+
+      <div id="results" class="results" hidden>
+        <div class="results__gauge">
+          <div class="gauge">
+            <div id="gauge-fill" class="gauge__fill"></div>
+          </div>
+          <p id="verdict" class="verdict"></p>
+        </div>
+        <div class="results__images">
+          <figure>
+            <img id="result-input" alt="Uploaded X-ray (preprocessed)" />
+            <figcaption>Input X-ray</figcaption>
+          </figure>
+          <figure>
+            <img id="result-heatmap" alt="SmoothGrad sensitivity map overlay" />
+            <figcaption>Sensitivity map</figcaption>
+          </figure>
+        </div>
+        <button id="reset" class="btn btn--ghost">Analyze another image</button>
+      </div>
+    </section>
+
+    <section id="how" class="panel">
+      <h2>How it works</h2>
+      <div class="cards">
+        <div class="card">
+          <h3>1 · Preprocess</h3>
+          <p>The image is resized to 256×256 with its aspect ratio preserved, center-cropped to 224×224, and normalized — the same pipeline used at training time.</p>
+        </div>
+        <div class="card">
+          <h3>2 · Classify</h3>
+          <p>A DenseNet-121, trained on ~37k musculoskeletal radiographs from the Stanford MURA dataset, outputs the probability that the study is abnormal.</p>
+        </div>
+        <div class="card">
+          <h3>3 · Explain</h3>
+          <p><a href="https://arxiv.org/abs/1706.03825" target="_blank" rel="noopener">SmoothGrad</a> averages input gradients across dozens of noise-perturbed copies of the image to localize the region of abnormality.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>⚠️ Research &amp; demonstration only — not a medical device and not for clinical use.</p>
+    <p class="muted small">
+      Modernized rebuild (2026) of a 2021 VTU final-year project by Joyston Menezes &amp; Gagandeep Bekal,
+      originally adapted from <a href="https://github.com/akaragou/xray-vision" target="_blank" rel="noopener">akaragou/xray-vision</a>.
+    </p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
