@@ -3,93 +3,143 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Live demo: detection and visualization of bone abnormalities in X-ray images — runs entirely in your browser." />
-  <title>X-Ray Vision — Live Demo (in-browser)</title>
-  <link rel="stylesheet" href="app/static/style.css" />
+  <meta name="description" content="Detect and visualize bone abnormalities in X-ray images. Runs entirely in your browser, no upload required." />
+  <meta property="og:title" content="X-Ray Vision" />
+  <meta property="og:description" content="Spot bone abnormalities in X-rays and see where the model is looking. Runs entirely in your browser." />
+  <title>X-Ray Vision · In-Browser Demo</title>
+  <link rel="stylesheet" href="docs/web/landing.css" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦴</text></svg>" />
-  <style>
-    .loadbar { height: 10px; border-radius: 999px; background: var(--bg-card); border: 1px solid var(--border); overflow: hidden; margin-top: 0.6rem; }
-    .loadbar__fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
-    .badge { display: inline-block; padding: 0.25rem 0.8rem; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent); font-size: 0.85rem; margin-top: 1rem; }
-  </style>
 </head>
 <body>
   <nav class="nav">
     <span class="nav__brand">🦴 X-Ray Vision</span>
     <div class="nav__links">
-      <a href="#analyze">Analyze</a>
-      <a href="https://github.com/joystonmenezes/xray-vision">GitHub</a>
-      <a href="https://stanfordmlgroup.github.io/competitions/mura/" target="_blank" rel="noopener">MURA dataset</a>
+      <a href="#how">How it works</a>
+      <a href="#analyze">Try it</a>
+      <a class="nav__ghlink" href="https://github.com/joystonmenezes/xray-vision" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12a11.5 11.5 0 0 0 7.9 10.9c.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5Z"/></svg>
+        GitHub
+      </a>
     </div>
   </nav>
 
   <header class="hero">
+    <span class="hero__eyebrow">⚡ Runs entirely in your browser</span>
     <h1>X-Ray Vision</h1>
-    <p class="hero__tag">Detection &amp; visualization of bone abnormalities in X-ray images<br />using convolutional neural networks</p>
-    <a class="btn btn--primary" href="#analyze">Analyze an X-ray</a>
-    <div><span class="badge">⚡ Runs 100% in your browser — your X-ray never leaves your device</span></div>
+    <p class="hero__tag">
+      Spot bone abnormalities in X-ray images and see exactly where the model is looking,
+      powered by a DenseNet-121 trained on 40,000 radiographs.
+    </p>
+    <div class="hero__cta">
+      <a class="btn btn--primary" href="#analyze">Analyze an X-ray</a>
+      <a class="btn btn--ghost" href="https://github.com/joystonmenezes/xray-vision" target="_blank" rel="noopener">View source</a>
+    </div>
+    <div class="hero__chips">
+      <span>Runs 100% in your browser</span>
+      <span>Your X-ray never leaves your device</span>
+      <span>Open source, MIT licensed</span>
+    </div>
   </header>
 
+  <div class="showcase">
+    <div class="browser">
+      <div class="browser__bar">
+        <span class="browser__dot"></span><span class="browser__dot"></span><span class="browser__dot"></span>
+        <span class="browser__url">joystonmenezes.github.io/xray-vision</span>
+      </div>
+      <img src="docs/screenshot-results.png" alt="An analyzed humerus X-ray showing 99.6% chance of abnormality alongside a sensitivity map that highlights the affected region" loading="lazy" />
+    </div>
+  </div>
+
   <main>
-    <section id="analyze" class="panel">
-      <h2>Upload a bone X-ray</h2>
-      <p class="muted">
-        The same DenseNet-121 (trained on the Stanford MURA dataset) that powers the
-        <a href="https://github.com/joystonmenezes/xray-vision">full app</a>, compiled to run
-        client-side with onnxruntime-web. The heatmap in this demo is occlusion-based;
-        the server version uses SmoothGrad.
-      </p>
-
-      <div id="model-status">
-        <p class="muted small" id="model-text">Downloading model (33 MB)…</p>
-        <div class="loadbar"><div id="model-bar" class="loadbar__fill"></div></div>
+    <section id="how" class="section">
+      <div class="section__head">
+        <h2>How it works</h2>
+        <p>Three steps, all running locally on your device.</p>
       </div>
-
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload an X-ray image" hidden>
-        <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-          <path d="M12 16V4m0 0 4 4m-4-4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round"/>
-        </svg>
-        <p><strong>Drop an X-ray here</strong> or click to browse</p>
-        <p class="muted small">PNG or JPEG · up to 16 MB</p>
-        <input id="file-input" type="file" accept="image/png,image/jpeg" hidden />
-      </div>
-      <p class="muted small" id="sample-row" style="margin-top: 0.8rem;" hidden>
-        No X-ray handy? <a id="try-sample" href="#analyze">Try the sample study</a>.
-      </p>
-
-      <div id="progress" class="progress" hidden>
-        <div class="spinner" aria-hidden="true"></div>
-        <p id="progress-text">Analyzing X-ray…</p>
-      </div>
-
-      <div id="error" class="error" role="alert" hidden></div>
-
-      <div id="results" class="results" hidden>
-        <div class="results__gauge">
-          <div class="gauge"><div id="gauge-fill" class="gauge__fill"></div></div>
-          <p id="verdict" class="verdict"></p>
+      <div class="steps">
+        <div class="step">
+          <div class="step__num">1</div>
+          <h3>Preprocess</h3>
+          <p>Your image is resized and normalized the same way the model saw its training data, so it sees a familiar input.</p>
         </div>
-        <div class="results__images">
-          <figure>
-            <canvas id="canvas-input" width="224" height="224" style="width:100%;display:block;"></canvas>
-            <figcaption>Input X-ray</figcaption>
-          </figure>
-          <figure>
-            <canvas id="canvas-heatmap" width="224" height="224" style="width:100%;display:block;"></canvas>
-            <figcaption>Occlusion sensitivity map</figcaption>
-          </figure>
+        <div class="step">
+          <div class="step__num">2</div>
+          <h3>Classify</h3>
+          <p>A DenseNet-121 averages several views of the scan (flip, small rotations, zoom) to estimate the chance of an abnormality.</p>
         </div>
-        <button id="reset" class="btn btn--ghost">Analyze another image</button>
+        <div class="step">
+          <div class="step__num">3</div>
+          <h3>Explain</h3>
+          <p>An occlusion sensitivity map highlights the region driving the prediction, so the result is never a black box.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="analyze" class="section">
+      <div class="analyze">
+        <h2>Try it yourself</h2>
+        <p class="analyze__intro">
+          The same model that powers the
+          <a href="https://github.com/joystonmenezes/xray-vision" target="_blank" rel="noopener">full app</a>,
+          compiled to run client side with onnxruntime web. Drop in a bone X-ray to get a
+          probability and a sensitivity map in seconds.
+        </p>
+
+        <div id="model-status">
+          <p class="muted small" id="model-text">Downloading model (33 MB)…</p>
+          <div class="loadbar"><div id="model-bar" class="loadbar__fill"></div></div>
+        </div>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload an X-ray image" hidden>
+          <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M12 16V4m0 0 4 4m-4-4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round"/>
+          </svg>
+          <p><strong>Drop an X-ray here</strong> or click to browse</p>
+          <p class="muted small">PNG or JPEG · up to 16 MB</p>
+          <input id="file-input" type="file" accept="image/png,image/jpeg" hidden />
+        </div>
+        <p class="muted small" id="sample-row" style="margin-top: 0.9rem;" hidden>
+          No X-ray handy? <a id="try-sample" href="#analyze">Try the sample study</a>.
+        </p>
+
+        <div id="progress" class="progress" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <p id="progress-text">Analyzing X-ray…</p>
+        </div>
+
+        <div id="error" class="error" role="alert" hidden></div>
+
+        <div id="results" class="results" hidden>
+          <div class="results__gauge">
+            <p id="verdict" class="verdict"></p>
+            <div class="gauge"><div id="gauge-fill" class="gauge__fill"></div></div>
+          </div>
+          <div class="results__images">
+            <figure>
+              <canvas id="canvas-input" width="224" height="224"></canvas>
+              <figcaption>Input X-ray</figcaption>
+            </figure>
+            <figure>
+              <canvas id="canvas-heatmap" width="224" height="224"></canvas>
+              <figcaption>Sensitivity map</figcaption>
+            </figure>
+          </div>
+          <button id="reset" class="btn btn--ghost">Analyze another image</button>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="footer">
-    <p>⚠️ Research &amp; demonstration only — not a medical device and not for clinical use.</p>
-    <p class="muted small">
-      In-browser demo of <a href="https://github.com/joystonmenezes/xray-vision">joystonmenezes/xray-vision</a> —
-      a 2026 rebuild of a 2021 VTU final-year project by Joyston Menezes &amp; Gagandeep Bekal.
+    <p class="disclaimer">
+      ⚠️ Research and demonstration only. This is not a medical device and must not be used for clinical diagnosis.
+    </p>
+    <p class="footer__credit">
+      In-browser demo of
+      <a href="https://github.com/joystonmenezes/xray-vision" target="_blank" rel="noopener">joystonmenezes/xray-vision</a>,
+      a 2026 rebuild of a 2021 VTU final-year project by Joyston Menezes and Gagandeep Bekal.
     </p>
   </footer>
 
