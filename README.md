@@ -15,7 +15,9 @@ Upload a bone X-ray → get the **probability it contains an abnormality**, plus
 [![ONNX](https://img.shields.io/badge/ONNX-005ce6?logo=onnx&logoColor=white)](https://onnx.ai/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<img src="docs/screenshot-results.png" alt="X-Ray Vision analyzing a humerus study: 99.6% chance of abnormality, with a sensitivity map highlighting the affected region" width="820">
+<img src="docs/demo.gif" alt="X-Ray Vision analyzing a humerus study: the input X-ray, a sensitivity map fading in over the affected region, and a gauge filling to 99.6% chance of abnormality" width="720">
+
+<sub><a href="https://joystonmenezes.github.io/xray-vision/">Open the live demo</a> and try it on your own X-ray.</sub>
 
 </div>
 
@@ -28,9 +30,9 @@ Upload a bone X-ray → get the **probability it contains an abnormality**, plus
 ## 📖 The story
 
 This began as our **2021 final-year B.E. project** at NMAM Institute of Technology
-(Visvesvaraya Technological University) — *“Detection and Visualization of Bone Abnormality
+(Visvesvaraya Technological University): *“Detection and Visualization of Bone Abnormality
 on X-Ray images using Convolutional Neural Networks”* by **Joyston Menezes** and
-**Gagandeep Bekal** — built on Python 2, TensorFlow 1.x and Flask.
+**Gagandeep Bekal**, built on Python 2, TensorFlow 1.x and Flask.
 
 Five years later the code no longer ran on any modern machine. This repository is the
 **2026 rebuild**: the *same trained model* and the *same functionality*, on a stack that
@@ -61,17 +63,17 @@ flowchart LR
     E --> F
 ```
 
-1. **Preprocess** — resized to 256×256 with aspect ratio preserved (padded square),
-   center-cropped to 224×224, scaled to `[0, 1]` — identical to the training pipeline.
+1. **Preprocess.** Resized to 256×256 with aspect ratio preserved (padded square),
+   center-cropped to 224×224, scaled to `[0, 1]`, identical to the training pipeline.
    ImageNet BGR mean subtraction happens inside the exported graph.
-2. **Classify** — a **DenseNet-121** trained on the
+2. **Classify.** A **DenseNet-121** trained on the
    [Stanford MURA dataset](https://stanfordmlgroup.github.io/competitions/mura/)
    (~40k upper-extremity radiographs: elbow, finger, forearm, hand, humerus, shoulder,
    wrist) outputs `P(normal)` and `P(abnormal)`. The prediction is averaged over a few
-   label-preserving **test-time views** (flip, small rotations, mild zoom) — the
-   *“Test Time Multi-View”* stage from the original project — which steadies the answer
+   label-preserving **test-time views** (flip, small rotations, mild zoom), the
+   *“Test Time Multi-View”* stage from the original project, which steadies the answer
    when a study is captured at a slightly different angle.
-3. **Explain** — [SmoothGrad](https://arxiv.org/abs/1706.03825) averages the input gradient
+3. **Explain.** [SmoothGrad](https://arxiv.org/abs/1706.03825) averages the input gradient
    of the abnormal-class logit across dozens of noise-perturbed copies of the image; the map
    is thresholded at its 99th percentile, blurred, and overlaid on the X-ray.
 
@@ -79,7 +81,7 @@ flowchart LR
 > **The weights are the original 2021 weights.** The legacy TF1 frozen graph was converted
 > once to ONNX ([`scripts/convert_model.py`](scripts/convert_model.py)) and is loaded as a
 > native PyTorch module via [`onnx2torch`](https://github.com/ENOT-AutoDL/onnx2torch), which
-> restores autograd — so explainability is computed exactly as it was originally, with no
+> restores autograd, so explainability is computed exactly as it was originally, with no
 > TensorFlow dependency.
 
 ## 🚀 Quickstart
@@ -108,14 +110,14 @@ docker build -t xray-vision .
 docker run -p 8000:8000 xray-vision
 ```
 
-The image is self-contained (model included) and deploys anywhere Docker runs — Google
+The image is self-contained (model included) and deploys anywhere Docker runs: Google
 Cloud Run, Hugging Face Spaces, Render, Railway, Fly.io.
 </details>
 
 <details>
 <summary><b>🔌 API reference</b></summary>
 
-**`POST /api/analyze`** — multipart form with a `file` field (PNG/JPEG ≤ 16 MB)
+**`POST /api/analyze`** takes a multipart form with a `file` field (PNG/JPEG ≤ 16 MB)
 
 ```bash
 curl -F "file=@docs/example_input.png" http://localhost:8000/api/analyze
@@ -130,7 +132,7 @@ curl -F "file=@docs/example_input.png" http://localhost:8000/api/analyze
 }
 ```
 
-**`GET /healthz`** — liveness probe.
+**`GET /healthz`** is a liveness probe.
 </details>
 
 <details>
@@ -155,8 +157,8 @@ Pages that runs the same ONNX model **entirely client-side** with
 WASM). No server, no cost, and uploaded X-rays never leave the visitor's device.
 
 Because browser runtimes expose no gradients, the demo explains predictions with an
-**occlusion sensitivity map** — sliding a patch across the image and measuring the drop in
-the abnormal-class logit — rather than true SmoothGrad. Predictions are identical to the
+**occlusion sensitivity map**, sliding a patch across the image and measuring the drop in
+the abnormal-class logit, rather than true SmoothGrad. Predictions are identical to the
 server app; the heatmap is a coarser cousin.
 </details>
 
@@ -190,22 +192,22 @@ Reported in the 2021 project, evaluated on MURA:
 | Humerus | **87.15%** |
 | Elbow | **86.45%** |
 | Finger | **82.13%** |
-| *Overall* — ResNet ≈ **86%** · DenseNet ≈ **85%** | |
+| *Overall:* ResNet ≈ **86%** · DenseNet ≈ **85%** | |
 
 </div>
 
 ## 🙏 Credits
 
-- **Original project (2021)** — Joyston Menezes &amp; Gagandeep Bekal, Dept. of Computer
+- **Original project (2021):** Joyston Menezes &amp; Gagandeep Bekal, Dept. of Computer
   Science &amp; Engineering, NMAM Institute of Technology, Nitte. Guided by
   Mr. Ramesha Shettigar.
-- **Upstream implementation &amp; trained model** — adapted from
+- **Upstream implementation &amp; trained model:** adapted from
   [akaragou/xray-vision](https://github.com/akaragou/xray-vision) by Andreas Karagounis.
-- **Dataset** — [MURA](https://stanfordmlgroup.github.io/competitions/mura/): Rajpurkar et al.,
+- **Dataset:** [MURA](https://stanfordmlgroup.github.io/competitions/mura/): Rajpurkar et al.,
   *MURA: Large Dataset for Abnormality Detection in Musculoskeletal Radiographs* (2017).
-- **Explainability** — Smilkov et al.,
+- **Explainability:** Smilkov et al.,
   *[SmoothGrad: removing noise by adding noise](https://arxiv.org/abs/1706.03825)* (2017).
-- **Architectures** — Huang et al., *Densely Connected Convolutional Networks* (2017);
+- **Architectures:** Huang et al., *Densely Connected Convolutional Networks* (2017);
   He et al., *Deep Residual Learning for Image Recognition* (2015).
 
 ## 📄 License
